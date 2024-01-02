@@ -1,35 +1,40 @@
-from typing import Annotated
-from fastapi import FastAPI, Query, Path
-from random import randint
-import word_db as WordDB
-import word_db.rae_definitions as RAE
+from fastapi import FastAPI, status, Response #, Query
+# from typing import Annotated
+
+from word_db import get_original_accented_word, get_random_selectable_word, word_is_in_dictionary, word_has_accents
+from word_db.rae_definitions import search_word
 
 
-word_api = FastAPI()
+word_db = FastAPI()
 
 
-@word_api.get("/pick_word")
-def pick_word(
-    length: Annotated[int, Query(ge= WordDB.MIN_WORD_LENGTH, le= WordDB.MAX_WORD_LENGTH)] = 5,
-    accents: bool = False
-):
-    accents_key = "accented" if accents else "accentless"
-    total_word_count = WordDB.STATS["selectables"][accents_key][str(length)]
-    chosen_index = randint(0, total_word_count)
-    word = WordDB.get_selectable_word_at_index(index= chosen_index, accented= accents, length= str(length))
-    return { "word": word }
+# def word_definition(word: Annotated[str | None, Query(min_length= 5, max_length=10)] = None):
+@word_db.get("/definitions/{word}")
+def get_definition(word: str):
+    result = { "data": [] }
+    result["data"] += _get_definitions_to_add(word)
+    original_accented = get_original_accented_word(word)
+    if original_accented != word:
+        result["data"] += _get_definitions_to_add(original_accented)
+    return result
+    
+
+@word_db.get("/words/check")
+def check_word(word:str, response: Response):
+    is_in_db = word_is_in_dictionary(word=word, accents_mode=word_has_accents(word))
+    response.status_code = status.HTTP_204_NO_CONTENT if is_in_db else status.HTTP_404_NOT_FOUND
 
 
-@word_api.get("/define/{word:str}")
-def define(
-    word: Annotated[str, Path(min_length= WordDB.MIN_WORD_LENGTH, max_length= WordDB.MAX_WORD_LENGTH)]
-):
-    original_accented = WordDB.get_original_accented_word(word)
-    rae_word = RAE.search_word(word)
-    accented_rae_word = RAE.search_word(original_accented) if original_accented != "" else RAE.RAEWord("", [])
-    definitions = []
-    if len(rae_word.definitions) > 0:
-        definitions.append(rae_word)
-    if word != original_accented and len(accented_rae_word.definitions) > 0:
-        definitions.append(accented_rae_word)
-    return [ rae_w.__dict__ for rae_w in definitions ]
+# def get_word(length: Annotated[int, Query(ge=5, le=10)] = 5, accents: bool = False):
+@word_db.get("/words/pick")
+def get_word(length: int = 5, accents: bool = False):
+    return { "word": get_random_selectable_word(length, accents) }
+
+
+
+def _get_definitions_to_add(word:str) -> [{str: any}]:
+    result = []
+    definitions = search_word(word)
+    if definitions.definitions and len(definitions.definitions) > 0:
+        result.append(definitions)
+    return result
