@@ -4,4 +4,5 @@
 **/other/**
 **/ignore/**
 **.log
-**/word_db/**
+**/word_db/lookup/**
+**/word_db/selectables/**
